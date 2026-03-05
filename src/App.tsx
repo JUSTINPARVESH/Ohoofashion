@@ -158,7 +158,7 @@ const ProductCard = ({ product }: { product: Product, key?: any }) => (
         ) : null}
       </div>
       <h3 className="text-sm font-medium mb-1">{product.name}</h3>
-      <p className="text-zinc-500 text-sm">${product.price.toFixed(2)}</p>
+      <p className="text-zinc-500 text-sm">${(product.price || 0).toFixed(2)}</p>
     </Link>
   </motion.div>
 );
@@ -499,7 +499,7 @@ const ProductDetailPage = () => {
             />
           </div>
           <div className="grid grid-cols-4 gap-4">
-            {product.images.map((img, idx) => (
+            {(product.images || []).map((img, idx) => (
               <button
                 key={idx}
                 onClick={() => setActiveImage(idx)}
@@ -528,7 +528,7 @@ const ProductDetailPage = () => {
             </p>
             <h1 className="text-4xl font-serif font-bold mb-4">{product.name}</h1>
             <div className="flex items-center gap-4">
-              <p className="text-2xl text-zinc-900">${product.price.toFixed(2)}</p>
+              <p className="text-2xl text-zinc-900">${(product.price || 0).toFixed(2)}</p>
               <span className={cn(
                 "text-[10px] font-bold uppercase tracking-widest px-2 py-1",
                 product.stock > 10 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
@@ -582,7 +582,7 @@ const ProductDetailPage = () => {
           <div className="mt-auto space-y-4">
             <button
               onClick={() => { addItem(product, selectedSize); navigate('/cart'); }}
-              disabled={product.stock === 0 || (product.sizes.length > 0 && !selectedSize)}
+              disabled={product.stock === 0 || ((product.sizes || []).length > 0 && !selectedSize)}
               className="w-full bg-zinc-900 text-white py-5 font-bold uppercase tracking-widest text-xs hover:bg-zinc-800 transition-all disabled:bg-zinc-300"
             >
               {product.stock > 0 ? 'Add to Shopping Bag' : 'Out of Stock'}
@@ -614,12 +614,12 @@ const CartPage = () => {
             {items.map((item) => (
               <div key={`${item.id}-${item.size}`} className="flex gap-6 pb-8 border-b border-zinc-100">
                 <div className="w-32 aspect-[3/4] bg-zinc-100 shrink-0">
-                  <img src={item.images[0]} className="w-full h-full object-cover" alt={item.name} referrerPolicy="no-referrer" />
+                  <img src={item.images?.[0] || 'https://picsum.photos/seed/fashion/300/400'} className="w-full h-full object-cover" alt={item.name} referrerPolicy="no-referrer" />
                 </div>
                 <div className="flex-1 flex flex-col">
                   <div className="flex justify-between mb-2">
                     <h3 className="font-medium">{item.name}</h3>
-                    <p className="font-medium">${(item.price * item.quantity).toFixed(2)}</p>
+                    <p className="font-medium">${((item.price || 0) * item.quantity).toFixed(2)}</p>
                   </div>
                   <p className="text-xs text-zinc-500 uppercase tracking-widest mb-4">Size: {item.size}</p>
                   <div className="mt-auto flex items-center justify-between">
@@ -643,7 +643,7 @@ const CartPage = () => {
               <div className="space-y-4 mb-8">
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Subtotal</span>
-                  <span>${total().toFixed(2)}</span>
+                  <span>${(total() || 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-zinc-500">Shipping</span>
@@ -651,7 +651,7 @@ const CartPage = () => {
                 </div>
                 <div className="pt-4 border-t border-zinc-200 flex justify-between font-bold">
                   <span>Total</span>
-                  <span>${(total() + (total() > 150 ? 0 : 15)).toFixed(2)}</span>
+                  <span>${((total() || 0) + (total() > 150 ? 0 : 15)).toFixed(2)}</span>
                 </div>
               </div>
               <button onClick={() => navigate('/checkout')} className="w-full btn-primary py-4">Proceed to Checkout</button>
@@ -744,7 +744,7 @@ const CheckoutPage = () => {
           disabled={loading}
           className="w-full btn-primary py-5 disabled:bg-zinc-300"
         >
-          {loading ? 'Processing...' : `Place Order • $${(total() + (total() > 150 ? 0 : 15)).toFixed(2)}`}
+          {loading ? 'Processing...' : `Place Order • $${((total() || 0) + (total() > 150 ? 0 : 15)).toFixed(2)}`}
         </button>
       </form>
     </div>
@@ -868,14 +868,14 @@ const OrderHistoryPage = () => {
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Total</p>
-                <p className="text-sm font-bold">${order.total.toFixed(2)}</p>
+                <p className="text-sm font-bold">${(order.total || 0).toFixed(2)}</p>
               </div>
             </div>
             <div className="space-y-6">
-              {order.items.map((item: any) => (
+              {(order.items || []).map((item: any) => (
                 <div key={item.id} className="flex gap-4">
                   <div className="w-16 h-20 bg-zinc-100 shrink-0">
-                    <img src={item.images[0]} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                    <img src={item.images?.[0] || 'https://picsum.photos/seed/fashion/100/120'} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                   </div>
                   <div>
                     <p className="text-sm font-medium">{item.product_name}</p>
@@ -966,7 +966,7 @@ const AdminDashboard = () => {
         </div>
         <div className="bg-white p-8 shadow-sm border border-zinc-100">
           <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">Daily Sales</p>
-          <p className="text-4xl font-serif font-bold">${stats.dailySales.toFixed(2)}</p>
+          <p className="text-4xl font-serif font-bold">${(stats.dailySales || 0).toFixed(2)}</p>
         </div>
       </div>
 
@@ -975,7 +975,7 @@ const AdminDashboard = () => {
           <Zap className="text-amber-500" size={20} />
           <h3 className="text-xs font-bold uppercase tracking-widest">Low Stock Alerts</h3>
         </div>
-        {stats.lowStock.length === 0 ? (
+        {(!stats.lowStock || stats.lowStock.length === 0) ? (
           <p className="text-zinc-400 text-sm italic">All items are well stocked.</p>
         ) : (
           <div className="space-y-4">
@@ -1107,7 +1107,7 @@ const AdminProductManagement = () => {
               
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Sizes (comma separated)</label>
-                <input type="text" className="w-full border border-zinc-200 p-3 focus:outline-none focus:border-zinc-900" value={editingProduct.sizes.join(', ')} onChange={e => setEditingProduct({ ...editingProduct, sizes: e.target.value.split(',').map(s => s.trim()).filter(s => s) })} />
+                <input type="text" className="w-full border border-zinc-200 p-3 focus:outline-none focus:border-zinc-900" value={(editingProduct.sizes || []).join(', ')} onChange={e => setEditingProduct({ ...editingProduct, sizes: e.target.value.split(',').map(s => s.trim()).filter(s => s) })} />
               </div>
 
               <div className="space-y-4">
@@ -1116,7 +1116,7 @@ const AdminProductManagement = () => {
                   <button type="button" onClick={addAttribute} className="text-[10px] font-bold uppercase tracking-widest text-zinc-900 underline">Add Attribute</button>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  {Object.entries(editingProduct.attributes).map(([key, value]) => (
+                  {Object.entries(editingProduct.attributes || {}).map(([key, value]) => (
                     <div key={key} className="flex gap-2 items-center">
                       <span className="text-xs font-bold w-24 shrink-0">{key}:</span>
                       <input 
@@ -1137,7 +1137,7 @@ const AdminProductManagement = () => {
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Image URLs (comma separated)</label>
-                <input type="text" className="w-full border border-zinc-200 p-3 focus:outline-none focus:border-zinc-900" value={editingProduct.images.join(', ')} onChange={e => setEditingProduct({ ...editingProduct, images: e.target.value.split(',').map(s => s.trim()).filter(s => s) })} />
+                <input type="text" className="w-full border border-zinc-200 p-3 focus:outline-none focus:border-zinc-900" value={(editingProduct.images || []).join(', ')} onChange={e => setEditingProduct({ ...editingProduct, images: e.target.value.split(',').map(s => s.trim()).filter(s => s) })} />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Video URL</label>
@@ -1179,12 +1179,12 @@ const AdminProductManagement = () => {
               <tr key={p.id} className="border-b border-zinc-50 hover:bg-zinc-50 transition-colors">
                 <td className="p-6">
                   <div className="flex items-center gap-4">
-                    <img src={p.images[0]} className="w-10 h-12 object-cover bg-zinc-100" alt="" referrerPolicy="no-referrer" />
+                    <img src={p.images?.[0] || 'https://picsum.photos/seed/fashion/100/120'} className="w-10 h-12 object-cover bg-zinc-100" alt="" referrerPolicy="no-referrer" />
                     <span className="font-medium">{p.name}</span>
                   </div>
                 </td>
                 <td className="p-6">{p.category}</td>
-                <td className="p-6">${p.price.toFixed(2)}</td>
+                <td className="p-6">${(p.price || 0).toFixed(2)}</td>
                 <td className="p-6">{p.stock}</td>
                 <td className="p-6">
                   <div className="flex gap-4">
@@ -1351,7 +1351,7 @@ const AdminOrderManagement = () => {
                   <p className="font-medium">{o.user_name}</p>
                   <p className="text-xs text-zinc-400">{o.user_email}</p>
                 </td>
-                <td className="p-6">${o.total.toFixed(2)}</td>
+                <td className="p-6">${(o.total || 0).toFixed(2)}</td>
                 <td className="p-6">
                   <span className={cn(
                     "text-[10px] font-bold uppercase tracking-widest px-3 py-1",
