@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import Database from 'better-sqlite3';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -19,6 +20,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'ohoo-fashion-secret-2026';
 // Initialize Database
 const db = new Database('ohoo.db');
 
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
+
 // Create Tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -29,10 +37,17 @@ db.exec(`
     role TEXT DEFAULT 'user'
   );
 
+  CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS subcategories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    category TEXT NOT NULL -- 'Men' or 'Kids'
+    category_id INTEGER NOT NULL,
+    FOREIGN KEY (category_id) REFERENCES categories(id),
+    UNIQUE(name, category_id)
   );
 
   CREATE TABLE IF NOT EXISTS products (
@@ -40,7 +55,7 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT,
     price REAL NOT NULL,
-    category TEXT NOT NULL,
+    category_id INTEGER NOT NULL,
     subcategory_id INTEGER,
     images TEXT, -- JSON array of URLs
     video TEXT, -- Video URL
@@ -50,6 +65,7 @@ db.exec(`
     is_new BOOLEAN DEFAULT 0,
     is_trending BOOLEAN DEFAULT 0,
     is_featured BOOLEAN DEFAULT 0,
+    FOREIGN KEY (category_id) REFERENCES categories(id),
     FOREIGN KEY (subcategory_id) REFERENCES subcategories(id)
   );
 
@@ -61,6 +77,8 @@ db.exec(`
     address TEXT,
     city TEXT,
     zip TEXT,
+    payment_method TEXT DEFAULT 'COD',
+    payment_status TEXT DEFAULT 'Unpaid',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
@@ -81,31 +99,45 @@ db.exec(`
     value TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS reels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   -- Default settings
-  INSERT OR IGNORE INTO settings (key, value) VALUES ('hero_banner_text', 'Spring Collection 2026 - Up to 50% Off');
+  INSERT OR IGNORE INTO settings (key, value) VALUES ('hero_banner_text', 'WE GIVE OFFERS 365 DAYS');
 
-  -- Default subcategories
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Shirts', 'Men');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Pants', 'Men');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('T-Shirts', 'Men');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Jeans', 'Men');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Hoodies', 'Men');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Accessories', 'Men');
+  -- Default categories
+  INSERT OR IGNORE INTO categories (name) VALUES ('Men');
+  INSERT OR IGNORE INTO categories (name) VALUES ('Kids');
+  INSERT OR IGNORE INTO categories (name) VALUES ('Accessories');
 
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Kids Shirts', 'Kids');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Kids Pants', 'Kids');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Kids T-Shirts', 'Kids');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Kids Shorts', 'Kids');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Traditional Wear', 'Kids');
-  INSERT OR IGNORE INTO subcategories (name, category) VALUES ('Accessories', 'Kids');
+  -- Seed data with checks for category IDs
+  CREATE UNIQUE INDEX IF NOT EXISTS unq_subcategory_name_cat ON subcategories(name, category_id);
+  INSERT OR IGNORE INTO subcategories (name, category_id) SELECT 'Shirts', id FROM categories WHERE name = 'Men';
+  INSERT OR IGNORE INTO subcategories (name, category_id) SELECT 'Jeans', id FROM categories WHERE name = 'Men';
+  INSERT OR IGNORE INTO subcategories (name, category_id) SELECT 'Kids T-Shirts', id FROM categories WHERE name = 'Kids';
+  INSERT OR IGNORE INTO subcategories (name, category_id) SELECT 'Watches', id FROM categories WHERE name = 'Accessories';
+  INSERT OR IGNORE INTO subcategories (name, category_id) SELECT 'Caps', id FROM categories WHERE name = 'Accessories';
 `);
 
-// Seed Admin User if not exists
+// Migration attempt
+try {
+  db.prepare("ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'COD'").run();
+} catch (e) { }
+try {
+  db.prepare("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'Unpaid'").run();
+} catch (e) { }
+
+// Seed Admin User
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@ohoofashion.com';
+const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 const existingAdmin = db.prepare('SELECT * FROM users WHERE email = ?').get(adminEmail);
 if (!existingAdmin) {
-  const hashedPassword = bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10);
-  db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Admin', adminEmail, hashedPassword, 'admin');
+  const hashedPassword = bcrypt.hashSync(adminPassword, 10);
+  db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Admin Manager', adminEmail, hashedPassword, 'admin');
 }
 
 app.use(express.json({ limit: '50mb' }));
@@ -153,45 +185,69 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
+// Categories
+app.get('/api/categories', (req, res) => {
+  const categories = db.prepare('SELECT * FROM categories').all();
+  res.json(categories);
+});
+
+app.post('/api/admin/categories', authenticate, isAdmin, (req, res) => {
+  const { name } = req.body;
+  const result = db.prepare('INSERT INTO categories (name) VALUES (?)').run(name);
+  res.json({ id: result.lastInsertRowid });
+});
+
+app.put('/api/admin/categories/:id', authenticate, isAdmin, (req, res) => {
+  const { name } = req.body;
+  db.prepare('UPDATE categories SET name = ? WHERE id = ?').run(name, req.params.id);
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/categories/:id', authenticate, isAdmin, (req, res) => {
+  db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 // Subcategories
 app.get('/api/subcategories', (req, res) => {
-  const { category } = req.query;
+  const { category_id } = req.query;
   let query = 'SELECT * FROM subcategories';
   const params = [];
-  if (category) {
-    query += ' WHERE category = ?';
-    params.push(category);
+  if (category_id) {
+    query += ' WHERE category_id = ?';
+    params.push(category_id);
   }
   const subs = db.prepare(query).all(...params);
   res.json(subs);
 });
 
 app.post('/api/admin/subcategories', authenticate, isAdmin, (req, res) => {
-  const { name, category } = req.body;
-  const result = db.prepare('INSERT INTO subcategories (name, category) VALUES (?, ?)').run(name, category);
+  const { name, category_id } = req.body;
+  const result = db.prepare('INSERT INTO subcategories (name, category_id) VALUES (?, ?)').run(name, category_id);
   res.json({ id: result.lastInsertRowid });
 });
 
 app.put('/api/admin/subcategories/:id', authenticate, isAdmin, (req, res) => {
-  const { name, category } = req.body;
-  db.prepare('UPDATE subcategories SET name = ?, category = ? WHERE id = ?').run(name, category, req.params.id);
+  const { name, category_id } = req.body;
+  db.prepare('UPDATE subcategories SET name = ?, category_id = ? WHERE id = ?').run(name, category_id, req.params.id);
   res.json({ success: true });
 });
 
 app.delete('/api/admin/subcategories/:id', authenticate, isAdmin, (req, res) => {
+  db.prepare('UPDATE products SET subcategory_id = NULL WHERE subcategory_id = ?').run(req.params.id);
   db.prepare('DELETE FROM subcategories WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
 // Products
 app.get('/api/products', (req, res) => {
-  const { category, subcategory_id, search, minPrice, maxPrice, type } = req.query;
-  let query = 'SELECT p.*, s.name as subcategory_name FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id WHERE 1=1';
+  const { category_id, subcategory_id, search, minPrice, maxPrice, type } = req.query;
+  let query = 'SELECT p.*, s.name as subcategory_name, c.name as category_name FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id LEFT JOIN categories c ON p.category_id = c.id WHERE 1=1';
   const params: any[] = [];
 
-  if (category) {
-    query += ' AND p.category = ?';
-    params.push(category);
+  if (category_id) {
+    query += ' AND p.category_id = ?';
+    params.push(category_id);
   }
   if (subcategory_id) {
     query += ' AND p.subcategory_id = ?';
@@ -214,8 +270,8 @@ app.get('/api/products', (req, res) => {
   if (type === 'featured') query += ' AND p.is_featured = 1';
 
   const products = db.prepare(query).all(...params);
-  res.json(products.map((p: any) => ({ 
-    ...p, 
+  res.json(products.map((p: any) => ({
+    ...p,
     images: JSON.parse(p.images || '[]'),
     sizes: JSON.parse(p.sizes || '[]'),
     attributes: JSON.parse(p.attributes || '{}')
@@ -223,10 +279,10 @@ app.get('/api/products', (req, res) => {
 });
 
 app.get('/api/products/:id', (req, res) => {
-  const product: any = db.prepare('SELECT p.*, s.name as subcategory_name FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id WHERE p.id = ?').get(req.params.id);
+  const product: any = db.prepare('SELECT p.*, s.name as subcategory_name, c.name as category_name FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?').get(req.params.id);
   if (!product) return res.status(404).json({ error: 'Product not found' });
-  res.json({ 
-    ...product, 
+  res.json({
+    ...product,
     images: JSON.parse(product.images || '[]'),
     sizes: JSON.parse(product.sizes || '[]'),
     attributes: JSON.parse(product.attributes || '{}')
@@ -235,20 +291,20 @@ app.get('/api/products/:id', (req, res) => {
 
 // Admin Product CRUD
 app.post('/api/admin/products', authenticate, isAdmin, (req, res) => {
-  const { name, description, price, category, subcategory_id, images, video, stock, sizes, attributes, is_new, is_trending, is_featured } = req.body;
+  const { name, description, price, category_id, subcategory_id, images, video, stock, sizes, attributes, is_new, is_trending, is_featured } = req.body;
   const result = db.prepare(`
-    INSERT INTO products (name, description, price, category, subcategory_id, images, video, stock, sizes, attributes, is_new, is_trending, is_featured)
+    INSERT INTO products (name, description, price, category_id, subcategory_id, images, video, stock, sizes, attributes, is_new, is_trending, is_featured)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, description, price, category, subcategory_id, JSON.stringify(images), video, stock, JSON.stringify(sizes), JSON.stringify(attributes), is_new ? 1 : 0, is_trending ? 1 : 0, is_featured ? 1 : 0);
+  `).run(name, description, price, category_id, subcategory_id, JSON.stringify(images), video, stock, JSON.stringify(sizes), JSON.stringify(attributes), is_new ? 1 : 0, is_trending ? 1 : 0, is_featured ? 1 : 0);
   res.json({ id: result.lastInsertRowid });
 });
 
 app.put('/api/admin/products/:id', authenticate, isAdmin, (req, res) => {
-  const { name, description, price, category, subcategory_id, images, video, stock, sizes, attributes, is_new, is_trending, is_featured } = req.body;
+  const { name, description, price, category_id, subcategory_id, images, video, stock, sizes, attributes, is_new, is_trending, is_featured } = req.body;
   db.prepare(`
-    UPDATE products SET name=?, description=?, price=?, category=?, subcategory_id=?, images=?, video=?, stock=?, sizes=?, attributes=?, is_new=?, is_trending=?, is_featured=?
+    UPDATE products SET name=?, description=?, price=?, category_id=?, subcategory_id=?, images=?, video=?, stock=?, sizes=?, attributes=?, is_new=?, is_trending=?, is_featured=?
     WHERE id=?
-  `).run(name, description, price, category, subcategory_id, JSON.stringify(images), video, stock, JSON.stringify(sizes), JSON.stringify(attributes), is_new ? 1 : 0, is_trending ? 1 : 0, is_featured ? 1 : 0, req.params.id);
+  `).run(name, description, price, category_id, subcategory_id, JSON.stringify(images), video, stock, JSON.stringify(sizes), JSON.stringify(attributes), is_new ? 1 : 0, is_trending ? 1 : 0, is_featured ? 1 : 0, req.params.id);
   res.json({ success: true });
 });
 
@@ -259,11 +315,11 @@ app.delete('/api/admin/products/:id', authenticate, isAdmin, (req, res) => {
 
 // Orders
 app.post('/api/orders', authenticate, (req: any, res) => {
-  const { items, total, address, city, zip } = req.body;
+  const { items, total, address, city, zip, paymentMethod } = req.body;
   const userId = req.user.id;
 
   const transaction = db.transaction(() => {
-    const orderResult = db.prepare('INSERT INTO orders (user_id, total, address, city, zip) VALUES (?, ?, ?, ?, ?)').run(userId, total, address, city, zip);
+    const orderResult = db.prepare('INSERT INTO orders (user_id, total, address, city, zip, payment_method) VALUES (?, ?, ?, ?, ?, ?)').run(userId, total, address, city, zip, paymentMethod || 'COD');
     const orderId = orderResult.lastInsertRowid;
 
     for (const item of items) {
@@ -301,6 +357,12 @@ app.get('/api/admin/orders', authenticate, isAdmin, (req, res) => {
   res.json(orders);
 });
 
+app.put('/api/admin/orders/:id/payment-status', authenticate, isAdmin, (req, res) => {
+  const { status } = req.body;
+  db.prepare('UPDATE orders SET payment_status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ success: true });
+});
+
 app.put('/api/admin/orders/:id/status', authenticate, isAdmin, (req, res) => {
   const { status } = req.body;
   db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, req.params.id);
@@ -322,6 +384,23 @@ app.get('/api/admin/dashboard', authenticate, isAdmin, (req, res) => {
   });
 });
 
+// Reels
+app.get('/api/reels', (req, res) => {
+  const reels = db.prepare('SELECT * FROM reels ORDER BY created_at DESC').all();
+  res.json(reels);
+});
+
+app.post('/api/admin/reels', authenticate, isAdmin, (req, res) => {
+  const { url, description } = req.body;
+  const result = db.prepare('INSERT INTO reels (url, description) VALUES (?, ?)').run(url, description);
+  res.json({ id: result.lastInsertRowid });
+});
+
+app.delete('/api/admin/reels/:id', authenticate, isAdmin, (req, res) => {
+  db.prepare('DELETE FROM reels WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 // Settings
 app.get('/api/settings', (req, res) => {
   const settings = db.prepare('SELECT * FROM settings').all();
@@ -336,6 +415,55 @@ app.put('/api/admin/settings', authenticate, isAdmin, (req, res) => {
   const { key, value } = req.body;
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
   res.json({ success: true });
+});
+
+// Image & Video Upload
+app.post('/api/admin/upload', authenticate, isAdmin, (req, res) => {
+  const { image, fileName } = req.body; // base64 string
+  if (!image) return res.status(400).json({ error: 'No media provided' });
+
+  try {
+    const mimeMatch = image.match(/^data:([^;]*);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : '';
+
+    let isVideo = mimeType.startsWith('video/') || mimeType === 'application/mp4' || image.startsWith('data:video/');
+    if (!isVideo && fileName) {
+      isVideo = /\.(mp4|mov|avi|mkv|webm)$/i.test(fileName);
+    }
+
+    const base64Data = image.includes(',') ? image.split(',')[1] : image;
+
+    let prefix = 'img';
+    let extension = 'jpg';
+
+    if (isVideo) {
+      prefix = 'vid';
+      if (fileName) {
+        extension = fileName.split('.').pop() || 'mp4';
+      } else {
+        extension = mimeType.split('/')[1] || 'mp4';
+        if (extension === 'quicktime') extension = 'mov';
+        if (extension.includes('-')) extension = extension.split('-').pop() || 'mp4';
+      }
+    } else {
+      if (fileName) {
+        extension = fileName.split('.').pop() || 'jpg';
+      } else if (mimeType.startsWith('image/')) {
+        extension = mimeType.split('/')[1] || 'jpg';
+      }
+    }
+
+    extension = extension.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const finalName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
+    const filePath = path.join(uploadsDir, finalName);
+
+    fs.writeFileSync(filePath, base64Data, 'base64');
+    res.json({ url: `/uploads/${finalName}` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to upload media' });
+  }
 });
 
 // --- Vite Integration ---

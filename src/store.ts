@@ -6,7 +6,8 @@ export interface Product {
   name: string;
   description: string;
   price: number;
-  category: string;
+  category_id: number;
+  category_name?: string;
   subcategory_id?: number;
   subcategory_name?: string;
   images: string[];

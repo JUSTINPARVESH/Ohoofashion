@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+*.db
+uploads/
+schema.txt
+subcats_schema.txt
