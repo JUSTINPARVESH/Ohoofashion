@@ -2,13 +2,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "env": {
+    "VITE_BACKEND_URL": "@ohoofashion_backend_url"
+  },
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "env": {
-    "VITE_BACKEND_URL": "https://ohoofashion-backend.up.railway.app"
-  }
+  ]
 }
