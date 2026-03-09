@@ -9,6 +9,6 @@
     }
   ],
   "env": {
-    "VITE_BACKEND_URL": "https://ohoo-fashion-backend.onrender.com"
+    "VITE_BACKEND_URL": "https://ohoofashion-backend.up.railway.app"
   }
 }

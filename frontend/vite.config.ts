@@ -31,7 +31,7 @@ export default defineConfig(({ mode }) => {
           }
         : {
             '/api': {
-              target: process.env.VITE_BACKEND_URL || 'https://ohoo-fashion-backend.onrender.com',
+              target: process.env.VITE_BACKEND_URL || 'https://ohoofashion-backend.up.railway.app',
               changeOrigin: true,
               secure: true,
             },
