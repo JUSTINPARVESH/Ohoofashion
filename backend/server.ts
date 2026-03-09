@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import jwt from "jsonwebtoken";
@@ -8,14 +8,6 @@ import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { createClient } from "@libsql/client";
 import serverless from "serverless-http";
-
-declare global {
-  namespace Express {
-    interface Request {
-      file?: any;
-    }
-  }
-}
 
 dotenv.config();
 
@@ -93,7 +85,7 @@ async function initDB() {
 
 // ---------------- AUTH ----------------
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", async (req: Request, res: Response) => {
 
   const { email, password } = req.body;
 
@@ -134,7 +126,7 @@ app.get("/api/products", async (req, res) => {
 // ---------------- FILE UPLOAD ----------------
 
 // Main upload route
-app.post("/api/upload", upload.single("file"), async (req, res) => {
+app.post("/api/upload", upload.single("file"), async (req: Request, res: Response) => {
 
   try {
 
@@ -144,7 +136,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     const stream = cloudinary.uploader.upload_stream(
       { resource_type: "auto" },
-      (error, result) => {
+      (error: any, result: any) => {
 
         if (error) {
           return res.status(500).json({ error });
@@ -170,7 +162,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 });
 
 // 🔧 compatibility route (for admin panel)
-app.post("/api/admin/upload", upload.single("file"), async (req, res) => {
+app.post("/api/admin/upload", upload.single("file"), async (req: Request, res: Response) => {
 
   try {
 
@@ -180,7 +172,7 @@ app.post("/api/admin/upload", upload.single("file"), async (req, res) => {
 
     const stream = cloudinary.uploader.upload_stream(
       { resource_type: "auto" },
-      (error, result) => {
+      (error: any, result: any) => {
 
         if (error) {
           return res.status(500).json({ error });
@@ -209,7 +201,7 @@ app.post("/api/admin/upload", upload.single("file"), async (req, res) => {
 
 app.use(express.static(path.join(__dirname, "../frontend/dist")));
 
-app.get("*", (req, res) => {
+app.get("*", (req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, "../frontend/dist", "index.html"));
 });
 
