@@ -29,6 +29,14 @@ export default defineConfig(({ mode }) => {
         ? {
             '/api': 'http://localhost:5001',
           }
+        : {
+            '/api': {
+              target: process.env.VITE_BACKEND_URL || 'https://ohoo-fashion-backend.onrender.com',
+              changeOrigin: true,
+              secure: true,
+            },
+          },
+          }
         : undefined,
     },
 

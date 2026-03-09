@@ -7,5 +7,8 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "env": {
+    "VITE_BACKEND_URL": "https://ohoo-fashion-backend.onrender.com"
+  }
 }
