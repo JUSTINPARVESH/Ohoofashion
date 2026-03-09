@@ -9,6 +9,14 @@ import { v2 as cloudinary } from "cloudinary";
 import { createClient } from "@libsql/client";
 import serverless from "serverless-http";
 
+declare global {
+  namespace Express {
+    interface Request {
+      file?: any;
+    }
+  }
+}
+
 dotenv.config();
 
 const app = express();
