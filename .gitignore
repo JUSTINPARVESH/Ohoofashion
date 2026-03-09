@@ -10,3 +10,5 @@ uploads/
 schema.txt
 subcats_schema.txt
 rewrite_server.js
+
+.vercel

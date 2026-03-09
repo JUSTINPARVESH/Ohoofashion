@@ -6,24 +6,34 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   const isDev = mode === 'development';
+
   return {
+    base: "/",   // ⭐ VERY IMPORTANT FOR VERCEL
+
     plugins: [react(), tailwindcss()],
+
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
+
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
     },
+
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Proxy only active during local development
-      proxy: isDev ? {
-        '/api': 'http://localhost:3000',
-      } : undefined,
+
+      proxy: isDev
+        ? {
+            '/api': 'http://localhost:3000',
+          }
+        : undefined,
     },
+
+    build: {
+      outDir: "dist"
+    }
   };
 });
