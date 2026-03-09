@@ -173,10 +173,9 @@ const ProductCard = ({ product }: { product: Product, key?: any }) => (
     <Link to={`/product/${product.id}`}>
       <div className="relative aspect-[3/4] overflow-hidden bg-zinc-100 mb-4">
         <img
-          src={product.images[0] || 'https://picsum.photos/seed/fashion/600/800'}
+          src={Array.isArray(product.images) ? product.images[0] : product.images || 'https://picsum.photos/seed/fashion/600/800'}
           alt={product.name}
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-          referrerPolicy="no-referrer"
         />
         {product.is_new ? (
           <span className="absolute top-4 left-4 bg-white text-zinc-900 px-3 py-1 text-[10px] font-bold uppercase tracking-widest">New</span>
@@ -322,6 +321,8 @@ const HomePage = () => {
                     controls
                     loop
                     playsInline
+                    preload="metadata"
+                    onError={(e) => console.error('Video load error:', e)}
                   />
                   {reel.description && (
                     <div className="absolute bottom-12 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
@@ -611,14 +612,13 @@ const ProductDetailPage = () => {
         <div className="space-y-4">
           <div className="aspect-[3/4] bg-zinc-100 overflow-hidden relative">
             <img
-              src={product.images[activeImage] || 'https://picsum.photos/seed/fashion/800/1200'}
+              src={Array.isArray(product.images) ? product.images[activeImage] : product.images || 'https://picsum.photos/seed/fashion/800/1200'}
               className="w-full h-full object-cover"
               alt={product.name}
-              referrerPolicy="no-referrer"
             />
           </div>
           <div className="grid grid-cols-4 gap-4">
-            {(product.images || []).map((img, idx) => (
+            {Array.isArray(product.images) ? product.images.map((img, idx) => (
               <button
                 key={idx}
                 onClick={() => setActiveImage(idx)}
@@ -627,9 +627,16 @@ const ProductDetailPage = () => {
                   activeImage === idx ? "border-zinc-900" : "border-transparent"
                 )}
               >
-                <img src={img} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                <img src={img} className="w-full h-full object-cover" alt="" />
               </button>
-            ))}
+            )) : (
+              <button
+                onClick={() => setActiveImage(0)}
+                className="aspect-square bg-zinc-100 overflow-hidden border-2 border-zinc-900"
+              >
+                <img src={product.images} className="w-full h-full object-cover" alt="" />
+              </button>
+            )}
           </div>
           {product.video && (
             <div className="mt-8">
@@ -1761,13 +1768,26 @@ const AdminReelsManagement = () => {
     setLoading(true);
     const reader = new FileReader();
     reader.onload = async () => {
-      const res = await fetch('/api/admin/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ image: reader.result, fileName: file.name, fileType: file.type })
-      });
-      const data = await res.json();
-      if (data.url) setUrl(data.url);
+      try {
+        const res = await fetch('/api/admin/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ image: reader.result, fileName: file.name, fileType: file.type })
+        });
+        const data = await res.json();
+        if (data.url) {
+          setUrl(data.url);
+          alert('Video uploaded successfully!');
+        } else {
+          alert('Upload failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Upload error: ' + error.message);
+      }
+      setLoading(false);
+    };
+    reader.onerror = () => {
+      alert('File reading error');
       setLoading(false);
     };
     reader.readAsDataURL(file);

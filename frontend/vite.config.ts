@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
 
       proxy: isDev
         ? {
-            '/api': 'http://localhost:5000',
+            '/api': 'http://localhost:5001',
           }
         : undefined,
     },

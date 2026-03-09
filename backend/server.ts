@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response } from 'express';
 import path from "path";
 import { fileURLToPath } from "url";
 import jwt from "jsonwebtoken";
@@ -8,10 +8,17 @@ import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { createClient } from "@libsql/client";
 import serverless from "serverless-http";
+import cors from "cors";
 
 dotenv.config();
 
 const app = express();
+
+// 🔧 Enable CORS for all routes
+app.use(cors({
+  origin: true, // Allow all origins in development
+  credentials: true
+}));
 
 // 🔧 Fix large upload error
 app.use(express.json({ limit: "100mb" }));
@@ -59,6 +66,23 @@ async function initDB() {
       email TEXT UNIQUE,
       password TEXT,
       role TEXT
+    );
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS reels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT UNIQUE,
+      value TEXT
     );
   `);
 
@@ -123,6 +147,18 @@ app.get("/api/products", async (req, res) => {
 
 });
 
+// ---------------- HEALTH CHECK ----------------
+
+app.get("/api/health", (req: Request, res: Response) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date(),
+    uptime: process.uptime(),
+    database: "connected",
+    cloudinary: "configured"
+  });
+});
+
 // ---------------- FILE UPLOAD ----------------
 
 // Main upload route
@@ -161,31 +197,64 @@ app.post("/api/upload", upload.single("file"), async (req: Request, res: Respons
 
 });
 
-// 🔧 compatibility route (for admin panel)
+// 🔧 compatibility route (for admin panel - handles both form-data and JSON)
 app.post("/api/admin/upload", upload.single("file"), async (req: Request, res: Response) => {
 
   try {
 
-    if (!req.file) {
+    // Handle multipart form-data
+    if (req.file) {
+      // Determine resource type based on mimetype
+      const resourceType = req.file.mimetype?.startsWith('video/') ? 'video' : 'auto';
+
+      const stream = cloudinary.uploader.upload_stream(
+        { resource_type: resourceType as "auto" | "image" | "video" | "raw" },
+        (error: any, result: any) => {
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            return res.status(500).json({ error: error.message || 'Upload failed' });
+          }
+          res.json({ url: result?.secure_url });
+        }
+      );
+      stream.end(req.file.buffer);
+      return;
+    }
+
+    // Handle JSON with base64 image/video
+    const { image, fileType } = req.body;
+    if (!image) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
+    console.log('Received upload request:', { fileType, imageLength: image.length });
+
+    const base64Data = image.replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Determine resource type based on file type
+    let resourceType = 'auto';
+    if (fileType?.startsWith('video/')) {
+      resourceType = 'video';
+    } else if (fileType?.startsWith('image/')) {
+      resourceType = 'image';
+    }
+
+    console.log('Uploading file:', { fileType, resourceType, bufferSize: buffer.length });
+
     const stream = cloudinary.uploader.upload_stream(
-      { resource_type: "auto" },
+      { resource_type: resourceType as "auto" | "image" | "video" | "raw" },
       (error: any, result: any) => {
-
         if (error) {
-          return res.status(500).json({ error });
+          console.error('Cloudinary upload error:', error);
+          return res.status(500).json({ error: error.message || 'Upload failed' });
         }
-
-        res.json({
-          url: result?.secure_url
-        });
-
+        console.log('Upload successful:', result?.secure_url);
+        res.json({ url: result?.secure_url });
       }
     );
 
-    stream.end(req.file.buffer);
+    stream.end(buffer);
 
   } catch (err) {
 
@@ -195,6 +264,89 @@ app.post("/api/admin/upload", upload.single("file"), async (req: Request, res: R
 
   }
 
+});
+
+// ---------------- REELS ----------------
+
+app.get("/api/reels", async (req: Request, res: Response) => {
+  try {
+    const result = await db.execute("SELECT * FROM reels ORDER BY created_at DESC");
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch reels" });
+  }
+});
+
+app.post("/api/admin/reels", async (req: Request, res: Response) => {
+  try {
+    const { url, description } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: "URL is required" });
+    }
+
+    await db.execute({
+      sql: "INSERT INTO reels (url, description) VALUES (?, ?)",
+      args: [url, description || ""]
+    });
+
+    // Fetch the newly created reel
+    const result = await db.execute({
+      sql: "SELECT * FROM reels WHERE url = ? ORDER BY created_at DESC LIMIT 1",
+      args: [url]
+    });
+
+    const newReel = (result.rows as any[])[0];
+    res.json(newReel);
+  } catch (err) {
+    console.error("Reel creation error:", err);
+    res.status(500).json({ error: "Failed to add reel" });
+  }
+});
+
+app.delete("/api/admin/reels/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await db.execute({
+      sql: "DELETE FROM reels WHERE id = ?",
+      args: [parseInt(id)]
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete reel" });
+  }
+});
+
+// ---------------- SETTINGS ----------------
+
+app.get("/api/settings", async (req: Request, res: Response) => {
+  try {
+    const result = await db.execute("SELECT key, value FROM settings");
+    const settings: any = {};
+    (result.rows as any[]).forEach((row: any) => {
+      settings[row.key] = row.value;
+    });
+    res.json(settings);
+  } catch (err) {
+    res.json({});
+  }
+});
+
+app.put("/api/admin/settings", async (req: Request, res: Response) => {
+  try {
+    const { key, value } = req.body;
+    if (!key) {
+      return res.status(400).json({ error: "Key is required" });
+    }
+
+    await db.execute({
+      sql: "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      args: [key, value]
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update settings" });
+  }
 });
 
 // ---------------- STATIC FRONTEND ----------------
@@ -209,7 +361,7 @@ app.get("*", (req: Request, res: Response) => {
 
 await initDB();
 
-app.listen(5000, () => {
+app.listen(5001, () => {
   console.log("Server running on http://localhost:5000");
 });
 
