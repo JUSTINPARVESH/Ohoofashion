@@ -6,10 +6,11 @@ import './index.css';
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
   let [resource, config] = args;
-  
-  // Provide the Render backend URL as the API base for production
-  const API_BASE = import.meta.env.VITE_BACKEND_URL || (import.meta.env.MODE === 'development' ? '' : 'https://ohoofashion.onrender.com');
-  
+
+  // In production (Vercel), VITE_BACKEND_URL = "https://ohoofashion.onrender.com"
+  // In development, it's empty so relative /api/ URLs hit the Vite dev proxy
+  const API_BASE = import.meta.env.VITE_BACKEND_URL ?? '';
+
   if (typeof resource === 'string' && resource.startsWith('/api/')) {
     resource = API_BASE + resource;
   }
